@@ -1,6 +1,6 @@
-To-Dos
+# To-Dos
 
-Deploy to Server
-Create CLI App
-Create GUI App
-Create iPhone Shortcut
+* Deploy to Server
+* Create CLI App
+* Create GUI App
+* Create iPhone Shortcut
