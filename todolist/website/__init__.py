@@ -1,6 +1,6 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
-from os import path
+from os import path, environ, getenv
 from flask_login import LoginManager
 
 # define the db
@@ -9,7 +9,7 @@ DB_NAME = "database.db"
 
 def create_app():
     app = Flask(__name__)
-    app.config['SECRET_KEY'] = 'secretkey'
+    app.config['SECRET_KEY'] = getenv('SECRETKEY')
 
     # configure flask to use a database
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DB_NAME}'
