@@ -1,6 +1,3 @@
-from inspect import _Object
-from re import A
-from xmlrpc.client import Boolean
 from Bus import Bus
 import numpy as np
 
@@ -123,7 +120,7 @@ class olc6502:
         self.addr_abs = self.pc
         return 0
 
-    # Zero page addressing
+    # Zero page addressing - Byte we 
     def ZP0(self) -> np.uint8():
         self.fetched = self.a
         return 0
