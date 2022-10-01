@@ -116,13 +116,82 @@ class olc6502:
     
     # Immediate Mode - Data is part of instruction
     def IMM(self) -> np.uint8():
-        self.pc += 1
-        self.addr_abs = self.pc
+        self.addr_abs = (self.pc + 1)
         return 0
 
-    # Zero page addressing - Byte we 
+    # Zero page addressing
     def ZP0(self) -> np.uint8():
-        self.fetched = self.a
+        self.addr_abs = self.read(self.pc)
+        self.pc += 1
+        self.addr_abs &= 0x00FF
+        return 0
+
+    # Zero page addressing - Offset from X
+    def ZPX(self) -> np.uint8():
+        self.addr_abs = self.read(self.pc + self.x)
+        self.pc += 1
+        self.addr_abs &= 0x00FF
+        return 0
+    
+    # Zero page addressing - Offset from Y
+    def ZPY(self) -> np.uint8():
+        self.addr_abs = self.read(self.pc + self.y)
+        self.pc += 1
+        self.addr_abs &= 0x00FF
+        return 0
+
+    # Absolute Address
+    def ABS(self) -> np.uint8():
+        self.lo = np.uint16(self.read(self.pc))
+        self.pc += 1
+        self.hi = np.uint16(self.read(self.pc))
+        self.pc += 1
+
+        self.addr_abs = (self.hi << 8) | self.lo
+
+        return 0
+
+    # Absolute Address - X Offset
+    def ABX(self) -> np.uint8():
+        self.lo = np.uint16(self.read(self.pc))
+        self.pc += 1
+        self.hi = np.uint16(self.read(self.pc))
+        self.pc += 1
+
+        self.addr_abs = (self.hi << 8) | self.lo
+        self.addr_abs += self.x
+        
+        if ((self.addr_abs & 0xFF00) != (self.hi << 8)):
+            return 1  
+        else:
+            return 0
+
+    # Absolute Address - Y Offset
+    def ABY(self) -> np.uint8():
+        self.lo = np.uint16(self.read(self.pc))
+        self.pc += 1
+        self.hi = np.uint16(self.read(self.pc))
+        self.pc += 1
+
+        self.addr_abs = (self.hi << 8) | self.lo
+        self.addr_abs += self.y
+        
+        if ((self.addr_abs & 0xFF00) != (self.hi << 8)):
+            return 1  
+        else:
+            return 0
+
+    # Indirect Addressing
+    def IND(self) -> np.uint8():
+        self.ptr_lo = np.uint16(self.read(self.pc))
+        self.pc += 1
+        self.ptr_hi = np.uint16(self.read(self.pc))
+        self.pc += 1
+
+        self.ptr = np.uint16(self.ptr_hi << 8) | self.ptr_lo
+
+        self.addr_abs = (self.read(self.ptr + 1) << 8) | self.read(self.ptr + 0)
+
         return 0
 
     # Opcodes
