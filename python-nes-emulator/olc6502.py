@@ -69,10 +69,10 @@ class olc6502:
         self.bus.write(a, d)
 
     # Convenience functions to access status register
-    def GetFlag(self, f: dict) -> np.uint8():
+    def GetFlag(self, f: str) -> np.uint8():
         None
 
-    def SetFlag(self, f: dict, v: bool):
+    def SetFlag(self, f: str, v: bool):
         None
 
     # Handle the clock
@@ -142,57 +142,252 @@ class olc6502:
 
     # Absolute Address
     def ABS(self) -> np.uint8():
-        self.lo = np.uint16(self.read(self.pc))
+        lo = np.uint16(self.read(self.pc))
         self.pc += 1
-        self.hi = np.uint16(self.read(self.pc))
+        hi = np.uint16(self.read(self.pc))
         self.pc += 1
 
-        self.addr_abs = (self.hi << 8) | self.lo
+        self.addr_abs = (hi << 8) | lo
 
         return 0
 
     # Absolute Address - X Offset
     def ABX(self) -> np.uint8():
-        self.lo = np.uint16(self.read(self.pc))
+        lo = np.uint16(self.read(self.pc))
         self.pc += 1
-        self.hi = np.uint16(self.read(self.pc))
+        hi = np.uint16(self.read(self.pc))
         self.pc += 1
 
-        self.addr_abs = (self.hi << 8) | self.lo
+        self.addr_abs = (hi << 8) | lo
         self.addr_abs += self.x
         
-        if ((self.addr_abs & 0xFF00) != (self.hi << 8)):
+        if ((self.addr_abs & 0xFF00) != (hi << 8)):
             return 1  
         else:
             return 0
 
     # Absolute Address - Y Offset
     def ABY(self) -> np.uint8():
-        self.lo = np.uint16(self.read(self.pc))
+        lo = np.uint16(self.read(self.pc))
         self.pc += 1
-        self.hi = np.uint16(self.read(self.pc))
+        hi = np.uint16(self.read(self.pc))
         self.pc += 1
 
-        self.addr_abs = (self.hi << 8) | self.lo
+        self.addr_abs = (hi << 8) | lo
         self.addr_abs += self.y
         
-        if ((self.addr_abs & 0xFF00) != (self.hi << 8)):
+        if ((self.addr_abs & 0xFF00) != (hi << 8)):
             return 1  
         else:
             return 0
 
     # Indirect Addressing
     def IND(self) -> np.uint8():
-        self.ptr_lo = np.uint16(self.read(self.pc))
+        ptr_lo = np.uint16(self.read(self.pc))
         self.pc += 1
-        self.ptr_hi = np.uint16(self.read(self.pc))
+        ptr_hi = np.uint16(self.read(self.pc))
         self.pc += 1
 
-        self.ptr = np.uint16(self.ptr_hi << 8) | self.ptr_lo
+        ptr = np.uint16(ptr_hi << 8) | ptr_lo
 
-        self.addr_abs = (self.read(self.ptr + 1) << 8) | self.read(self.ptr + 0)
+        # Simulate 6502 bug
+        if (ptr_lo == 0x00FF):
+            self.addr_abs = (self.read(ptr & 0xFF00) << 8 | self.read(ptr + 0))
+        else:
+            self.addr_abs = (self.read(ptr + 1) << 8) | self.read(ptr + 0)
 
         return 0
+
+    # Indirect Addressing - X
+    def IZX(self) -> np.uint8():
+        t = np.uint16(self.read(self.pc))
+        self.pc += 1
+
+        lo = self.read((t + self.x) & 0x00FF)
+        hi = self.read((t + self.x + 1) & 0x0FF)
+
+        self.addr_abs = (hi << 8) | lo
+
+        return 0
+
+    # Indirect Addressing - Y
+    def IZY(self) -> np.uint8():
+        t = np.uint16(self.read(self.pc))
+        self.pc += 1
+
+        lo = self.read(t & 0x00FF)
+        hi = self.read((t + 1) & 0x0FF)
+
+        self.addr_abs = (hi << 8) | lo
+        self.addr_abs += self.y
+
+        if ((self.addr_abs & 0xFF00) != (hi << 8)):
+            return 1
+        else:
+            return 0
+
+    def REL(self) -> np.uint8():
+        self.addr_rel = self.read(self.pc)
+        self.pc += 1
+        if(self.addr_rel & 0x80):
+            self.addr_rel |= 0xFF00
+        return 0
+
+    # Instructions
+    def fetch(self) -> np.uint8():
+        if not ((self.lookup[self.opcode].addrmode == self.IMP)):
+            self.fetched = self.read(self.addr_abs)
+        return self.fetched
+
+    def AND(self) -> np.uint8():
+        self.fetch()
+        self.a = self.a & self.fetched
+        self.SetFlag('Z', self.a & 0x80)
+        self.SetFlag('N', self.a & 0x80)
+        return 1
+
+    # Branch if carry
+    def BCS(self) -> np.uint8():
+        if (self.GetFlag('C') == 1):
+            self.cycles += 1
+            self.addr_abs = self.pc + self.addr_rel
+
+            if ((self.addr_abs & 0xFF00) != (self.pc & 0xFF00)):
+                self.cycles += 1
+
+            self.pc = self.addr_abs
+
+        return 0
+
+    # Branch if carry clear
+    def BCC(self) -> np.uint8():
+        if (self.GetFlag('C') == 0):
+            self.cycles += 1
+            self.addr_abs = self.pc + self.addr_rel
+
+            if ((self.addr_abs & 0xFF00) != (self.pc & 0xFF00)):
+                self.cycles += 1
+
+            self.pc = self.addr_abs
+
+        return 0
+
+    # Branch if carry equal
+    def BEQ(self) -> np.uint8():
+        if (self.GetFlag('Z') == 1):
+            self.cycles += 1
+            self.addr_abs = self.pc + self.addr_rel
+
+            if ((self.addr_abs & 0xFF00) != (self.pc & 0xFF00)):
+                self.cycles += 1
+
+            self.pc = self.addr_abs
+
+        return 0
+
+    # Branch if carry equal
+    def BEQ(self) -> np.uint8():
+        if (self.GetFlag('Z') == 1):
+            self.cycles += 1
+            self.addr_abs = self.pc + self.addr_rel
+
+            if ((self.addr_abs & 0xFF00) != (self.pc & 0xFF00)):
+                self.cycles += 1
+
+            self.pc = self.addr_abs
+
+        return 0
+
+    # Branch if negative
+    def BMI(self) -> np.uint8():
+        if (self.GetFlag('N') == 1):
+            self.cycles += 1
+            self.addr_abs = self.pc + self.addr_rel
+
+            if ((self.addr_abs & 0xFF00) != (self.pc & 0xFF00)):
+                self.cycles += 1
+
+            self.pc = self.addr_abs
+
+        return 0
+
+    # Branch if not equal
+    def BMI(self) -> np.uint8():
+        if (self.GetFlag('Z') == 0):
+            self.cycles += 1
+            self.addr_abs = self.pc + self.addr_rel
+
+            if ((self.addr_abs & 0xFF00) != (self.pc & 0xFF00)):
+                self.cycles += 1
+
+            self.pc = self.addr_abs
+
+        return 0
+
+    # Branch if positive
+    def BPL(self) -> np.uint8():
+        if (self.GetFlag('N') == 0):
+            self.cycles += 1
+            self.addr_abs = self.pc + self.addr_rel
+
+            if ((self.addr_abs & 0xFF00) != (self.pc & 0xFF00)):
+                self.cycles += 1
+
+            self.pc = self.addr_abs
+
+        return 0
+
+    # Branch if overflow
+    def BVC(self) -> np.uint8():
+        if (self.GetFlag('V') == 0):
+            self.cycles += 1
+            self.addr_abs = self.pc + self.addr_rel
+
+            if ((self.addr_abs & 0xFF00) != (self.pc & 0xFF00)):
+                self.cycles += 1
+
+            self.pc = self.addr_abs
+
+        return 0
+
+    # Branch if not overflowed
+    def BVS(self) -> np.uint8():
+        if (self.GetFlag('V') == 1):
+            self.cycles += 1
+            self.addr_abs = self.pc + self.addr_rel
+
+            if ((self.addr_abs & 0xFF00) != (self.pc & 0xFF00)):
+                self.cycles += 1
+
+            self.pc = self.addr_abs
+
+        return 0
+
+    # Clear the carry bit
+    def CLC(self) -> np.uint8():
+        self.SetFlag('C', False)
+        return 0
+
+    # Clear decimal
+    def CLD(self) -> np.uint8():
+        self.SetFlag('D', False)
+        return 0
+
+    # Disable interrupt
+    def CLI(self) -> np.uint8():
+        self.SetFlag('I', False)
+        return 0
+
+    # Clear overflow
+    def CLV(self) -> np.uint8():
+        self.SetFlag('V', False)
+        return 0
+
+    def ADC(self) -> np.uint8():
+        None
+
+    def SBC(self) -> np.uint8():
+        None
 
     # Opcodes
 
