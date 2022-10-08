@@ -1,8 +1,8 @@
 from Bus import Bus
-import numpy as np
+from numpy import uint8, uint16, uint32
 
 class Instruction:
-    def __init__(self, name: str, operate: np.uint8(), addrmode: np.uint8(), cycles: np.uint8()):
+    def __init__(self, name: str, operate: uint8(), addrmode: uint8(), cycles: uint8()):
         self.name = name
         self.operate = operate
         self.addrmode = addrmode
@@ -22,20 +22,20 @@ class olc6502:
             "N" : (1 << 7),	# Negative
         }
 
-        self.a = np.uint8(0x00) # Accumulator
-        self.x = np.uint8(0x00) # X Register
-        self.y = np.uint8(0x00) # Y Register
-        self.stkp = np.uint8(0x00) # Stack Pointer
-        self.pc = np.uint16(0x0000) # Program Counter
-        self.status = np.uint8(0x00) # Status register
+        self.a = uint8(0x00) # Accumulator
+        self.x = uint8(0x00) # X Register
+        self.y = uint8(0x00) # Y Register
+        self.stkp = uint8(0x00) # Stack Pointer
+        self.pc = uint16(0x0000) # Program Counter
+        self.status = uint8(0x00) # Status register
 
-        self.fetched = np.uint8(0x00) # Store fetched data
+        self.fetched = uint8(0x00) # Store fetched data
 
-        self.addr_abs = np.uint16(0x0000) # Memory location to read from
-        self.addr_rel = np.uint16(0x00)
+        self.addr_abs = uint16(0x0000) # Memory location to read from
+        self.addr_rel = uint16(0x00)
 
-        self.opcode = np.uint8(0x00)
-        self.cycles = np.uint8(0) # Cycles left for instruction
+        self.opcode = uint8(0x00)
+        self.cycles = uint8(0) # Cycles left for instruction
 
         # Holds all instructions
         self.lookup = [
@@ -57,19 +57,22 @@ class olc6502:
                         Instruction("BEQ",self.BEQ,self.REL,2),Instruction("SBC",self.SBC,self.IZY,5),Instruction("???",self.XXX,self.IMP,2),Instruction("???",self.XXX,self.IMP,8),Instruction("???",self.NOP,self.IMP,4),Instruction("SBC",self.SBC,self.ZPX,4),Instruction("INC",self.INC,self.ZPX,6),Instruction("???",self.XXX,self.IMP,6),Instruction("SED",self.SED,self.IMP,2),Instruction("SBC",self.SBC,self.ABY,4),Instruction("NOP",self.NOP,self.IMP,2),Instruction("???",self.XXX,self.IMP,7),Instruction("???",self.NOP,self.IMP,4),Instruction("SBC",self.SBC,self.ABX,4),Instruction("INC",self.INC,self.ABX,7),Instruction("???",self.XXX,self.IMP,7)
         ]
 
+    def disassemble(self, nStart: uint16(), nStop: uint16()) -> dict:
+        None
+
     def ConnectBus(self, bus: Bus()):
         self.bus = bus
 
     # Call the busses read
-    def read(self, a: np.uint16()) -> np.uint8():
+    def read(self, a: uint16()) -> uint8():
         return self.bus.read(a, False)
 
     # Call the busses write
-    def write(self, a: np.uint16(), d: np.uint8()):
+    def write(self, a: uint16(), d: uint8()):
         self.bus.write(a, d)
 
     # Convenience functions to access status register
-    def GetFlag(self, f: str) -> np.uint8():
+    def GetFlag(self, f: str) -> uint8():
         None
 
     def SetFlag(self, f: str, v: bool):
@@ -87,8 +90,8 @@ class olc6502:
             self.lookup[self.opcode].operate()
 
             # For additional cycles
-            additional_cycle1 = np.uint8(self.lookup[self.opcode].addrmode())
-            additional_cycle2 = np.uint8(self.lookup[self.opcode].operate())
+            additional_cycle1 = uint8(self.lookup[self.opcode].addrmode())
+            additional_cycle2 = uint8(self.lookup[self.opcode].operate())
 
             # If they need an additional clock cycle
             self.cycles += (additional_cycle1 & additional_cycle2)
@@ -96,55 +99,116 @@ class olc6502:
         self.cycles -= 1
     
     def reset(self):
-        None
+        self.a = 0
+        self.x = 0
+        self.y = 0
+        self.stkp = 0xFD
+        self.status = 0x00 | 'U'
+
+        self.addr_abs = 0xFFFC
+        lo = uint16(self.read(self.addr_abs + 0))
+        hi = uint16(self.read(self.addr_abs + 1))
+
+        self.pc = (hi << 8) | lo
+
+        self.addr_rel = 0x0000
+        self.addr_abs = 0x0000
+        self.fetched = 0x00
+
+        self.cycles = 8
 
     def irq(self):
-        None
+        if(self.GetFlag('I') == 0):
+            self.write(0x100+self.stkp, (self.pc >> 8) & 0x00FF)
+            self.stkp -= 1
+            self.write(0x100+self.stkp, self.pc & 0x00FF)
+            self.stkp -= 1
+
+            self.SetFlag('B', 0)
+            self.SetFlag('U', 1)
+            self.SetFlag('I', 1)
+            self.write(0x100+self.stkp, self.status)
+            self.stkp -= 1
+
+            self.addr_abs = 0xFFFE
+            lo = uint16(self.read(self.addr_abs + 0))
+            hi = uint16(self.read(self.addr_abs + 1))
+            self.pc = (hi << 8) | lo
+
+            self.cycles = 7
     
     def nmi(self):
-        None
+        self.write(0x100+self.stkp, (self.pc >> 8) & 0x00FF)
+        self.stkp -= 1
+        self.write(0x100+self.stkp, self.pc & 0x00FF)
+        self.stkp -= 1
 
-    def fetch(self) -> np.uint8():
+        self.SetFlag('B', 0)
+        self.SetFlag('U', 1)
+        self.SetFlag('I', 1)
+        self.write(0x100+self.stkp, self.status)
+        self.stkp -= 1
+
+        self.addr_abs = 0xFFFA
+        lo = uint16(self.read(self.addr_abs + 0))
+        hi = uint16(self.read(self.addr_abs + 1))
+        self.pc = (hi << 8) | lo
+
+        self.cycles = 8
+
+    def RTI(self):
+        self.stkp += 1
+        self.status = self.read(0x0100 + self.stkp)
+        self.status &= 'B'
+        self.status &= 'U'
+
+        self.stkp += 1
+        self.pc = uint16(self.read(0x0100+self.stkp))
+        self.stkp += 1
+        self.pc = uint16(self.read(0x0100+self.stkp) << 8)
+        return 0
+
+    def fetch(self) -> uint8():
         None
 
     # Addressing Modes
 
     # Implied - No data in instruction; Operating on the accumulator
-    def IMP(self) -> np.uint8():
+    def IMP(self) -> uint8():
         self.fetched = self.a
         return 0
     
     # Immediate Mode - Data is part of instruction
-    def IMM(self) -> np.uint8():
+    def IMM(self) -> uint8():
         self.addr_abs = (self.pc + 1)
         return 0
 
     # Zero page addressing
-    def ZP0(self) -> np.uint8():
+    def ZP0(self) -> uint8():
         self.addr_abs = self.read(self.pc)
         self.pc += 1
         self.addr_abs &= 0x00FF
         return 0
 
     # Zero page addressing - Offset from X
-    def ZPX(self) -> np.uint8():
+    def ZPX(self) -> uint8():
         self.addr_abs = self.read(self.pc + self.x)
         self.pc += 1
         self.addr_abs &= 0x00FF
         return 0
     
     # Zero page addressing - Offset from Y
-    def ZPY(self) -> np.uint8():
+    def ZPY(self) -> uint8():
         self.addr_abs = self.read(self.pc + self.y)
         self.pc += 1
         self.addr_abs &= 0x00FF
         return 0
 
     # Absolute Address
-    def ABS(self) -> np.uint8():
-        lo = np.uint16(self.read(self.pc))
+    def ABS(self) -> uint8():
+        lo = uint16(self.read(self.pc))
         self.pc += 1
-        hi = np.uint16(self.read(self.pc))
+        hi = uint16(self.read(self.pc))
         self.pc += 1
 
         self.addr_abs = (hi << 8) | lo
@@ -152,10 +216,10 @@ class olc6502:
         return 0
 
     # Absolute Address - X Offset
-    def ABX(self) -> np.uint8():
-        lo = np.uint16(self.read(self.pc))
+    def ABX(self) -> uint8():
+        lo = uint16(self.read(self.pc))
         self.pc += 1
-        hi = np.uint16(self.read(self.pc))
+        hi = uint16(self.read(self.pc))
         self.pc += 1
 
         self.addr_abs = (hi << 8) | lo
@@ -167,10 +231,10 @@ class olc6502:
             return 0
 
     # Absolute Address - Y Offset
-    def ABY(self) -> np.uint8():
-        lo = np.uint16(self.read(self.pc))
+    def ABY(self) -> uint8():
+        lo = uint16(self.read(self.pc))
         self.pc += 1
-        hi = np.uint16(self.read(self.pc))
+        hi = uint16(self.read(self.pc))
         self.pc += 1
 
         self.addr_abs = (hi << 8) | lo
@@ -182,13 +246,13 @@ class olc6502:
             return 0
 
     # Indirect Addressing
-    def IND(self) -> np.uint8():
-        ptr_lo = np.uint16(self.read(self.pc))
+    def IND(self) -> uint8():
+        ptr_lo = uint16(self.read(self.pc))
         self.pc += 1
-        ptr_hi = np.uint16(self.read(self.pc))
+        ptr_hi = uint16(self.read(self.pc))
         self.pc += 1
 
-        ptr = np.uint16(ptr_hi << 8) | ptr_lo
+        ptr = uint16(ptr_hi << 8) | ptr_lo
 
         # Simulate 6502 bug
         if (ptr_lo == 0x00FF):
@@ -199,8 +263,8 @@ class olc6502:
         return 0
 
     # Indirect Addressing - X
-    def IZX(self) -> np.uint8():
-        t = np.uint16(self.read(self.pc))
+    def IZX(self) -> uint8():
+        t = uint16(self.read(self.pc))
         self.pc += 1
 
         lo = self.read((t + self.x) & 0x00FF)
@@ -211,8 +275,8 @@ class olc6502:
         return 0
 
     # Indirect Addressing - Y
-    def IZY(self) -> np.uint8():
-        t = np.uint16(self.read(self.pc))
+    def IZY(self) -> uint8():
+        t = uint16(self.read(self.pc))
         self.pc += 1
 
         lo = self.read(t & 0x00FF)
@@ -226,7 +290,7 @@ class olc6502:
         else:
             return 0
 
-    def REL(self) -> np.uint8():
+    def REL(self) -> uint8():
         self.addr_rel = self.read(self.pc)
         self.pc += 1
         if(self.addr_rel & 0x80):
@@ -234,12 +298,12 @@ class olc6502:
         return 0
 
     # Instructions
-    def fetch(self) -> np.uint8():
+    def fetch(self) -> uint8():
         if not ((self.lookup[self.opcode].addrmode == self.IMP)):
             self.fetched = self.read(self.addr_abs)
         return self.fetched
 
-    def AND(self) -> np.uint8():
+    def AND(self) -> uint8():
         self.fetch()
         self.a = self.a & self.fetched
         self.SetFlag('Z', self.a & 0x80)
@@ -247,7 +311,7 @@ class olc6502:
         return 1
 
     # Branch if carry
-    def BCS(self) -> np.uint8():
+    def BCS(self) -> uint8():
         if (self.GetFlag('C') == 1):
             self.cycles += 1
             self.addr_abs = self.pc + self.addr_rel
@@ -260,7 +324,7 @@ class olc6502:
         return 0
 
     # Branch if carry clear
-    def BCC(self) -> np.uint8():
+    def BCC(self) -> uint8():
         if (self.GetFlag('C') == 0):
             self.cycles += 1
             self.addr_abs = self.pc + self.addr_rel
@@ -273,7 +337,7 @@ class olc6502:
         return 0
 
     # Branch if carry equal
-    def BEQ(self) -> np.uint8():
+    def BEQ(self) -> uint8():
         if (self.GetFlag('Z') == 1):
             self.cycles += 1
             self.addr_abs = self.pc + self.addr_rel
@@ -286,7 +350,7 @@ class olc6502:
         return 0
 
     # Branch if carry equal
-    def BEQ(self) -> np.uint8():
+    def BEQ(self) -> uint8():
         if (self.GetFlag('Z') == 1):
             self.cycles += 1
             self.addr_abs = self.pc + self.addr_rel
@@ -299,7 +363,7 @@ class olc6502:
         return 0
 
     # Branch if negative
-    def BMI(self) -> np.uint8():
+    def BMI(self) -> uint8():
         if (self.GetFlag('N') == 1):
             self.cycles += 1
             self.addr_abs = self.pc + self.addr_rel
@@ -312,7 +376,7 @@ class olc6502:
         return 0
 
     # Branch if not equal
-    def BMI(self) -> np.uint8():
+    def BMI(self) -> uint8():
         if (self.GetFlag('Z') == 0):
             self.cycles += 1
             self.addr_abs = self.pc + self.addr_rel
@@ -325,7 +389,7 @@ class olc6502:
         return 0
 
     # Branch if positive
-    def BPL(self) -> np.uint8():
+    def BPL(self) -> uint8():
         if (self.GetFlag('N') == 0):
             self.cycles += 1
             self.addr_abs = self.pc + self.addr_rel
@@ -338,7 +402,7 @@ class olc6502:
         return 0
 
     # Branch if overflow
-    def BVC(self) -> np.uint8():
+    def BVC(self) -> uint8():
         if (self.GetFlag('V') == 0):
             self.cycles += 1
             self.addr_abs = self.pc + self.addr_rel
@@ -351,7 +415,7 @@ class olc6502:
         return 0
 
     # Branch if not overflowed
-    def BVS(self) -> np.uint8():
+    def BVS(self) -> uint8():
         if (self.GetFlag('V') == 1):
             self.cycles += 1
             self.addr_abs = self.pc + self.addr_rel
@@ -364,31 +428,59 @@ class olc6502:
         return 0
 
     # Clear the carry bit
-    def CLC(self) -> np.uint8():
+    def CLC(self) -> uint8():
         self.SetFlag('C', False)
         return 0
 
     # Clear decimal
-    def CLD(self) -> np.uint8():
+    def CLD(self) -> uint8():
         self.SetFlag('D', False)
         return 0
 
     # Disable interrupt
-    def CLI(self) -> np.uint8():
+    def CLI(self) -> uint8():
         self.SetFlag('I', False)
         return 0
 
     # Clear overflow
-    def CLV(self) -> np.uint8():
+    def CLV(self) -> uint8():
         self.SetFlag('V', False)
         return 0
 
-    def ADC(self) -> np.uint8():
-        None
+    # Add with carry
+    def ADC(self) -> uint8():
+        self.fetch()
+        temp = uint16(uint16(self.a)+uint16(self.fetched)+uint16(self.GetFlag('C')))
+        self.SetFlag('C', temp > 255)
+        self.SetFlag('Z', (temp & 0x00FF) == 0)
+        self.SetFlag('N', temp & 0x80)
+        self.SetFlag('V', (uint16(self.a) ^ uint16(self.fetched) & uint16(self.a) ^ uint16(temp) & 0x0080))
+        self.a = temp & 0x00FF
+        return 1
 
-    def SBC(self) -> np.uint8():
-        None
+    def SBC(self) -> uint8():
+        self.fetch()
+        value = uint16(uint16(self.fetched) ^ 0x00FF)
+        temp = uint16(uint16(self.a)+uint16(value)+uint16(self.GetFlag('C')))
+        self.SetFlag('C', temp > 255)
+        self.SetFlag('Z', (temp & 0x00FF) == 0)
+        self.SetFlag('N', temp & 0x80)
+        self.SetFlag('V', ((temp ^ uint16(self.a)) & (temp ^ value) & 0x00800))
+        self.a = temp & 0x00FF
+        return 1
 
-    # Opcodes
+    # Push to stack
+    def PHA(self) -> uint8():
+        self.write(0x100 + self.stkp, self.a)
+        self.stkp -= 1
+        return 0
+
+    # Pop off stack
+    def PLA(self) -> uint8():
+        self.stkp += 1
+        self.a = self.read(0x100 + self.stkp)
+        self.SetFlag('Z', self.a == 0x00)
+        self.SetFlag('N', self.a & 0x80)
+        return
 
     # Catch an illegal opcode
