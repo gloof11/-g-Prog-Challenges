@@ -1,0 +1,5 @@
+website/database.db
+env/
+__pycache__/
+website/__pycache__/
+.dockerignore
