@@ -1,16 +1,17 @@
-# Dockerfile, Image, Container
-# Dockerfile = blueprint
-# Image = template to run container
-# Container = runs the server
-
 FROM python:3.9-slim
 
-ADD . .
 
-RUN pip install -r requirements.txt
+WORKDIR /todolist
+COPY ./ /todolist
 
-RUN pip install gunicorn
+ENV SECRETKEY=mykey
 
 EXPOSE 8000
 
-CMD ["./startserver.sh"]
+RUN apt update
+RUN apt install net-tools -y
+
+RUN pip install -r requirements.txt
+RUN pip install gunicorn
+
+ENTRYPOINT ["python", "main.py"]
